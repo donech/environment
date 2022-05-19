@@ -1,0 +1,211 @@
+version: '3.5'
+# 网络配置
+networks:
+  backend:
+    driver: ${NETWORKS_DRIVER}
+
+services:
+    mysql:
+        image: mysql:latest
+        ports:
+            - "${MYSQL_PORT}:3306"
+        restart: always
+        environment:
+            - TZ=${TZ}
+            - MYSQL_USER=mysql                  # 设置 Mysql 用户名称
+            - MYSQL_PASSWORD=${COMMON_PASSWORD}              # 设置 Mysql 用户密码
+            - MYSQL_ROOT_PASSWORD=${COMMON_PASSWORD}         # 设置 Mysql root 用户密码
+        # volumes:
+        #     - ./data/mysql/data:/var/lib/mysql
+        networks:
+            - backend
+
+    mysql-manage:
+        image: phpmyadmin/phpmyadmin
+        environment:
+            - TZ=${TZ}
+            - PMA_ARBITRARY=1
+            - MYSQL_USER=${COMMON_USERNAME}               # 设置连接的 Mysql 服务用户名称
+            - MYSQL_PASSWORD=${COMMON_PASSWORD}           # 设置连接的 Mysql 服务用户密码
+            - MYSQL_ROOT_PASSWORD=${COMMON_PASSWORD}      # 设置连接的 Mysql 服务 root 用户密码
+            - PMA_HOST=mysql                              # 设置连接的 Mysql 服务 host，可以是 Mysql 服务容器的名称，也可以是 Mysql 服务容器的 ip 地址
+            - PMA_PORT=${MYSQL_PORT}                      # 设置连接的 Mysql 服务端口号
+        ports:
+            - "${MYSQL_MANAGE_PORT}:80"                   # 设置容器80端口映射指定宿主机端口，用于宿主机访问可视化web
+        depends_on:                                       # 依赖容器
+            - mysql                                       # 在 Mysql 服务容器启动后启动
+        networks:
+            - backend
+        restart: always
+
+    redis:
+        ports:
+            - "${REDIS_PORT}:6379"
+        image: redis
+        restart: always
+        networks:
+            - backend
+
+    redis-manage:
+        image: erikdubbelboer/phpredisadmin
+        environment:
+            - TZ=${TZ}
+            - ADMIN_USER=${COMMON_USERNAME}           # 设置 Redis 可视化管理的用户名称
+            - ADMIN_PASS=${COMMON_PASSWORD}           # 设置 Redis 可视化管理的用户密码
+            - REDIS_1_HOST=redis                      # 设置连接的 Redis 服务 host，可以是 Redis 服务容器的名称，也可以是 Redis 服务容器的 ip 地址
+            - REDIS_1_PORT=${REDIS_PORT}              # 设置连接的 Redis 服务端口号
+        ports:
+            - "${REDIS_MANAGE_PORT}:80"                     # 设置容器80端口映射指定宿主机端口，用于宿主机访问可视化web
+        depends_on:                                       # 依赖容器
+            - redis                                         # 在 Redis 服务容器启动后启动
+        networks:
+            - backend
+        restart: always
+
+    postgres:
+        image: "postgres:14"
+        restart: always
+        environment:
+            - POSTGRES_USER=${COMMON_USERNAME}
+            - POSTGRES_PASSWORD=${COMMON_PASSWORD}
+        ports:
+            - "${POSTGRES_PORT}:5432"
+        # volumes:
+        #     - ./data/postgres/data:/var/lib/postgresql/data
+        networks:
+            - backend
+
+    mongodb:
+        image: mongo
+        ports:
+            - "${MONGODB_PORT}:27017"
+        # volumes:
+        #     - './data/mongo/db:/data/db'
+        restart: always
+        networks:
+            - backend
+
+    etcd:
+        image: bitnami/etcd
+        environment:
+            - TZ=${TZ}
+            - ALLOW_NONE_AUTHENTICATION=yes
+            - ETCD_ADVERTISE_CLIENT_URLS=http://etcd:2379
+        ports:                               # 设置端口映射
+            - "${ETCD_PORT}:2379"
+        restart: always
+        networks:
+            - backend
+
+    etcd-manage:
+        image: evildecay/etcdkeeper
+        environment:
+            - TZ=${TZ}
+        ports:
+            - "${ETCD_MANAGE_PORT}:8080"                    # 设置容器8080端口映射指定宿主机端口，用于宿主机访问可视化web
+        depends_on:                                       # 依赖容器
+            - etcd                                          # 在 etcd 服务容器启动后启动
+        networks:
+            - backend
+        restart: always
+
+    prometheus:
+        image: bitnami/prometheus
+        environment:
+            - TZ=${TZ}
+        # volumes:
+        #     - ./data/prometheus/prometheus.yml:/opt/bitnami/prometheus/conf/prometheus.yml  # 将 prometheus 配置文件挂载到容器里
+        ports:
+            - "${PROMETHEUS_PORT}:9090"                     # 设置容器9090端口映射指定宿主机端口，用于宿主机访问可视化web
+        networks:
+            - backend
+        restart: always
+
+    grafana:
+        image: grafana/grafana
+        environment:
+            - TZ=${TZ}
+        ports:
+            - "${GRAFANA_PORT}:3000"                        # 设置容器3000端口映射指定宿主机端口，用于宿主机访问可视化web
+        networks:
+            - backend
+        restart: always
+
+    jaeger:
+        image: jaegertracing/all-in-one:1.28
+        environment:
+            - TZ=${TZ}
+        ports:
+            - "${JAEGER_PORT}:16686"                        # 设置容器16686端口映射指定宿主机端口，用于宿主机访问可视化web
+        networks:
+            - backend
+        restart: always
+
+    dtm:
+        image: yedf/dtm
+        environment:
+            - TZ=${TZ}
+        entrypoint:
+            - "/app/dtm/dtm"
+            - "-c=/app/dtm/configs/config.yaml"
+        # volumes:
+        #     - ./data/dtm/config.yml:/app/dtm/configs/config.yaml # 将 dtm 配置文件挂载到容器里
+        ports:
+            - "${DTM_HTTP_PORT}:36789"
+            - "${DTM_GRPC_PORT}:36790"
+        networks:
+            - backend
+        restart: always
+
+    athens:
+        image: 371419684474.dkr.ecr.cn-northwest-1.amazonaws.com.cn/go-apps:athens
+        environment:
+            - TZ=${TZ}
+            - ATHENS_DISK_STORAGE_ROOT=/var/lib/athens/storage
+            - ATHENS_FILTER_FILE=/var/lib/athens/FilterFile
+            - ATHENS_GLOBAL_ENDPOINT=https://goproxy.cn
+            - ATHENS_STORAGE_TYPE=disk
+            - ATHENS_DOWNLOAD_MODE=sync
+            - GOSUMDB="sum.golang.google.cn"
+        # volumes:
+        #     - ./data/athens/storage:/var/lib/athens/storage # 将 dtm 配置文件挂载到容器里
+        #     #- ./data/athens/work:/var/lib/athens/work # 将 dtm 配置文件挂载到容器里
+        #     - ./data/athens/config/FilterFile:/var/lib/athens/FilterFile # 将 dtm 配置文件挂载到容器里
+        #     - ./data/athens/gitconfig/.gitconfig:/root/.gitconfig # 将 dtm 配置文件挂载到容器里
+        #     - ./data/athens/ssh-keys:/root/.ssh # 将 dtm 配置文件挂载到容器里
+        #     #- ./data/athens/config/config.toml:/config/config.toml
+        ports:
+            - "${ATHENS_PORT}:3000"
+        networks:
+            - backend
+        restart: always
+
+    nginx:
+        image: nginx
+        environment:
+            - TZ=${TZ}
+        # volumes:
+        #     #- ./data/nginx/config/nginx.conf:/etc/nginx/nginx.conf
+        #     - ./data/nginx/logs:/var/log/nginx
+        #     - ./data/nginx/www:/usr/share/nginx
+        #     #- ./data/nginx/config/conf.d:/etc/nginx/conf.d
+        #     #- ./data/nginx/ssh:/root/.ssh
+        ports:
+            - "80:80"
+            #- "443:443"
+        networks:
+            - backend
+        restart: always
+
+    sonarqube:
+        image: sonarqube
+        environment:
+            - TZ=${TZ}
+            - SONARQUBE_JDBC_URL=jdbc:postgresql://postgres:5432/sonar
+            - sonar.jdbc.username=${COMMON_USERNAME}
+            - sonar.jdbc.password=${COMMON_PASSWORD}
+        ports:
+            - "9000:9000"
+        networks:
+            - backend
+        restart: always
